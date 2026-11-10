@@ -1,0 +1,7 @@
+bin/
+build/
+dist/
+dpf/build/
+test/clap_host
+*.o
+*.d

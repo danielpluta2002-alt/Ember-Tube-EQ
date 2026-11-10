@@ -1,0 +1,25 @@
+#include <windows.h>
+1 ICON "icon.ico"
+1 24 "installer.manifest"
+101 RCDATA "../../dist/windows/EmberEQ.vst3/Contents/x86_64-win/EmberEQ.vst3"
+102 RCDATA "../../dist/windows/EmberEQ.clap"
+1 VERSIONINFO
+FILEVERSION 1,0,0,0
+PRODUCTVERSION 1,0,0,0
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040704b0"
+    BEGIN
+      VALUE "CompanyName", "Ember Audio"
+      VALUE "FileDescription", "Ember Tube EQ Setup"
+      VALUE "FileVersion", "1.0.0"
+      VALUE "ProductName", "Ember Tube EQ"
+      VALUE "ProductVersion", "1.0.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0407, 1200
+  END
+END

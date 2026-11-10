@@ -1,0 +1,9 @@
+#pragma once
+#include "../../../dpf/distrho/src/clap/entry.h"
+#include "../../../dpf/distrho/src/clap/plugin-factory.h"
+#include "../../../dpf/distrho/src/clap/host.h"
+#include "../../../dpf/distrho/src/clap/process.h"
+#include "../../../dpf/distrho/src/clap/events.h"
+#include "../../../dpf/distrho/src/clap/ext/params.h"
+#include "../../../dpf/distrho/src/clap/ext/gui.h"
+#include "../../../dpf/distrho/src/clap/ext/timer-support.h"

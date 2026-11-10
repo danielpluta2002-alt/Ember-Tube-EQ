@@ -1,0 +1,88 @@
+name: Build Ember Tube EQ
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  VERSION: 1.0.0
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal (Intel + Apple Silicon)
+        run: make -j4 macos-universal-10.15
+      - name: Check architectures
+        run: find bin -type f -path '*MacOS*' -exec lipo -info {} \;
+      - name: Build .pkg installer
+        run: sh installer/macos/build-pkg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmberTubeEQ-macOS
+          path: dist/*.pkg
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev pkg-config
+      - name: Build
+        run: make -j4 LDFLAGS="-static-libstdc++ -static-libgcc"
+      - name: Build .run installer
+        run: |
+          mkdir -p dist/linux && cp -r bin/EmberEQ.vst3 bin/EmberEQ.clap dist/linux/
+          strip dist/linux/EmberEQ.clap dist/linux/EmberEQ.vst3/Contents/x86_64-linux/EmberEQ.so
+          (cd dist/linux && tar czf ../payload.tgz EmberEQ.vst3 EmberEQ.clap)
+          cat installer/linux/header.sh dist/payload.tgz > dist/EmberTubeEQ-$VERSION-Linux-Setup.run
+          chmod +x dist/EmberTubeEQ-$VERSION-Linux-Setup.run
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmberTubeEQ-Linux
+          path: dist/*.run
+
+  windows:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get llvm-mingw cross compiler
+        run: |
+          curl -sSL -o lm.tar.xz https://github.com/mstorsjo/llvm-mingw/releases/download/20250924/llvm-mingw-20250924-ucrt-ubuntu-22.04-x86_64.tar.xz
+          tar xf lm.tar.xz && echo "$PWD/llvm-mingw-20250924-ucrt-ubuntu-22.04-x86_64/bin" >> $GITHUB_PATH
+      - name: Build
+        run: make -j4 WINDOWS=true CC=x86_64-w64-mingw32-clang CXX=x86_64-w64-mingw32-clang++ AR=x86_64-w64-mingw32-ar WINDRES=x86_64-w64-mingw32-windres
+      - name: Build setup .exe
+        run: |
+          mkdir -p dist/windows && cp -r bin/EmberEQ.vst3 bin/EmberEQ.clap dist/windows/
+          x86_64-w64-mingw32-strip dist/windows/EmberEQ.clap dist/windows/EmberEQ.vst3/Contents/x86_64-win/EmberEQ.vst3
+          cd installer/windows
+          x86_64-w64-mingw32-windres installer.rc -O coff -o installer.res
+          x86_64-w64-mingw32-clang -O2 -municode -mwindows installer.c installer.res -o ../../dist/EmberTubeEQ-$VERSION-Windows-Setup.exe -lshell32 -ladvapi32 -static
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmberTubeEQ-Windows
+          path: dist/*.exe
+
+  release:
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Publish release v${{ env.VERSION }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la out
+          gh release view v$VERSION -R ${{ github.repository }} >/dev/null 2>&1 || \
+            gh release create v$VERSION -R ${{ github.repository }} --target ${{ github.sha }} \
+              --title "Ember Tube EQ $VERSION" \
+              --notes "Installer für Windows (.exe), macOS (.pkg, Intel + Apple Silicon) und Linux (.run). Plugin-Formate: VST3 und CLAP."
+          gh release upload v$VERSION out/* -R ${{ github.repository }} --clobber
