@@ -1,6 +1,8 @@
 // Minimal macOS CLAP host: opens the plugin GUI in a Cocoa window and takes a screenshot.
 // usage: mac_gui_host <EmberEQ.clap bundle> <out.png>
+#define GL_SILENCE_DEPRECATION
 #import <Cocoa/Cocoa.h>
+#include <OpenGL/gl.h>
 #include "clap/clap.h"
 #include <dlfcn.h>
 #include <cmath>
@@ -40,7 +42,33 @@ int main(int argc, char** argv)
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
 
-    std::string bin = std::string(argv[1]) + "/Contents/MacOS/EmberEQ";
+    if (!strcmp(argv[1], "--control")) {
+        // control: our own legacy OpenGL view cleared to red, to check the machine can show GL at all
+        NSWindow* win = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 400, 200)
+                                                    styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+        NSOpenGLPixelFormatAttribute attrs[] = { NSOpenGLPFADoubleBuffer, NSOpenGLPFAAccelerated, 0 };
+        NSOpenGLPixelFormat* pf = [[NSOpenGLPixelFormat alloc] initWithAttributes:attrs];
+        printf("pixel format: %p\n", pf);
+        NSOpenGLView* v = [[NSOpenGLView alloc] initWithFrame:NSMakeRect(0, 0, 400, 200) pixelFormat:pf];
+        [win setContentView:v];
+        [win makeKeyAndOrderFront:nil];
+        [NSApp activateIgnoringOtherApps:YES];
+        NSDate* until = [NSDate dateWithTimeIntervalSinceNow:2.0];
+        while ([until timeIntervalSinceNow] > 0) {
+            [[v openGLContext] makeCurrentContext];
+            glClearColor(1, 0, 0, 1); glClear(GL_COLOR_BUFFER_BIT);
+            [[v openGLContext] flushBuffer];
+            NSEvent* ev;
+            while ((ev = [NSApp nextEventMatchingMask:NSEventMaskAny untilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]
+                                               inMode:NSDefaultRunLoopMode dequeue:YES])) [NSApp sendEvent:ev];
+        }
+        printf("GL renderer: %s / %s\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
+        std::string cmd = std::string("screencapture -x -o -l ") + std::to_string((long)[win windowNumber]) + " " + argv[2];
+        system(cmd.c_str()); fflush(stdout); _exit(0);
+    }
+
+    NSBundle* bundle = [NSBundle bundleWithPath:[NSString stringWithUTF8String:argv[1]]];
+    std::string bin = [[bundle executablePath] UTF8String];
     void* lib = dlopen(bin.c_str(), RTLD_NOW);
     if (!lib) { printf("dlopen: %s\n", dlerror()); return 1; }
     auto entry = (const clap_plugin_entry*)dlsym(lib, "clap_entry");

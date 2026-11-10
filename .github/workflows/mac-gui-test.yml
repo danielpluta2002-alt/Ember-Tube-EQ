@@ -9,25 +9,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-15-intel, macos-13]
+        os: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Build universal
-        run: make -j4 macos-universal-10.15
-      - name: Build test host
-        run: clang++ -std=c++17 -fobjc-arc -I test/inc test/mac_gui_host.mm -framework Cocoa -o mac_gui_host
-      - name: Run GUI test
+      - name: Build (native arch)
         run: |
-          sw_vers; uname -m
-          ./mac_gui_host bin/EmberEQ.clap shot-${{ matrix.os }}.png 2>&1 | tee log-${{ matrix.os }}.txt || true
-          ls -la
+          make -j4
+          make -C dpf/examples/Info clap
+      - name: Build test host
+        run: clang++ -std=c++17 -fobjc-arc -I test/inc test/mac_gui_host.mm -framework Cocoa -framework OpenGL -o mac_gui_host
+      - name: Run GUI tests
+        run: |
+          sw_vers; uname -m; system_profiler SPDisplaysDataType | head -20
+          T=${{ matrix.os }}
+          echo "=== control"; ./mac_gui_host --control control-$T.png 2>&1 || true
+          echo "=== ember";   ./mac_gui_host bin/EmberEQ.clap ember-$T.png 2>&1 || true
+          echo "=== dpf info"; ./mac_gui_host dpf/bin/d_info.clap info-$T.png 2>&1 || true
+          ls -la *.png
       - name: Upload results
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create ci-gui-test -R ${{ github.repository }} --prerelease --title "CI GUI test" --notes "Interner Test" --target ${{ github.sha }} 2>/dev/null || true
-          gh release upload ci-gui-test -R ${{ github.repository }} --clobber log-${{ matrix.os }}.txt shot-${{ matrix.os }}*.png || true
+          gh release upload ci-gui-test -R ${{ github.repository }} --clobber *.png || true
