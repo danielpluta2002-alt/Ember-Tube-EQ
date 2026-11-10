@@ -1,0 +1,33 @@
+name: macOS GUI test
+
+on:
+  push:
+    branches: [mac-gui-test]
+
+jobs:
+  gui:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel, macos-13]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal
+        run: make -j4 macos-universal-10.15
+      - name: Build test host
+        run: clang++ -std=c++17 -fobjc-arc -I test/inc test/mac_gui_host.mm -framework Cocoa -o mac_gui_host
+      - name: Run GUI test
+        run: |
+          sw_vers; uname -m
+          ./mac_gui_host bin/EmberEQ.clap shot-${{ matrix.os }}.png 2>&1 | tee log-${{ matrix.os }}.txt || true
+          ls -la
+      - name: Upload results
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ci-gui-test -R ${{ github.repository }} --prerelease --title "CI GUI test" --notes "Interner Test" --target ${{ github.sha }} 2>/dev/null || true
+          gh release upload ci-gui-test -R ${{ github.repository }} --clobber log-${{ matrix.os }}.txt shot-${{ matrix.os }}*.png || true
