@@ -9,12 +9,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-15-intel]
+        os: [macos-15-intel]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - name: Allow software OpenGL renderer (CI VMs have no GPU) - test build only
+        run: sed -i '' '/NSOpenGLPFAAccelerated,/d' dpf/dgl/src/pugl-upstream/src/mac_gl.m
       - name: Build (native arch)
         run: |
           make -j4

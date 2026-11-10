@@ -5,6 +5,23 @@
 #include <OpenGL/gl.h>
 #include "clap/clap.h"
 #include <dlfcn.h>
+
+// CGWindowListCreateImage is marked unavailable in newer SDKs but still exists at runtime
+typedef CGImageRef (*CreateImageFn)(CGRect, uint32_t, uint32_t, uint32_t);
+static void captureWindow(NSWindow* win, const char* path)
+{
+    void* cg = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_LAZY);
+    auto fn = cg ? (CreateImageFn)dlsym(cg, "CGWindowListCreateImage") : nullptr;
+    if (!fn) { printf("capture: no CGWindowListCreateImage\n"); return; }
+    // kCGWindowListOptionIncludingWindow = 8, kCGWindowImageBoundsIgnoreFraming = 1
+    CGImageRef img = fn(CGRectNull, 8, (uint32_t)[win windowNumber], 1);
+    if (!img) { printf("capture: null image\n"); return; }
+    NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithCGImage:img];
+    NSData* png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+    [png writeToFile:[NSString stringWithUTF8String:path] atomically:YES];
+    printf("capture: %zux%zu -> %s\n", CGImageGetWidth(img), CGImageGetHeight(img), path);
+    CGImageRelease(img);
+}
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -46,7 +63,7 @@ int main(int argc, char** argv)
         // control: our own legacy OpenGL view cleared to red, to check the machine can show GL at all
         NSWindow* win = [[NSWindow alloc] initWithContentRect:NSMakeRect(100, 100, 400, 200)
                                                     styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
-        NSOpenGLPixelFormatAttribute attrs[] = { NSOpenGLPFADoubleBuffer, NSOpenGLPFAAccelerated, 0 };
+        NSOpenGLPixelFormatAttribute attrs[] = { NSOpenGLPFADoubleBuffer, 0 };
         NSOpenGLPixelFormat* pf = [[NSOpenGLPixelFormat alloc] initWithAttributes:attrs];
         printf("pixel format: %p\n", pf);
         NSOpenGLView* v = [[NSOpenGLView alloc] initWithFrame:NSMakeRect(0, 0, 400, 200) pixelFormat:pf];
@@ -63,8 +80,7 @@ int main(int argc, char** argv)
                                                inMode:NSDefaultRunLoopMode dequeue:YES])) [NSApp sendEvent:ev];
         }
         printf("GL renderer: %s / %s\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
-        std::string cmd = std::string("screencapture -x -o -l ") + std::to_string((long)[win windowNumber]) + " " + argv[2];
-        system(cmd.c_str()); fflush(stdout); _exit(0);
+        captureWindow(win, argv[2]); fflush(stdout); _exit(0);
     }
 
     NSBundle* bundle = [NSBundle bundleWithPath:[NSString stringWithUTF8String:argv[1]]];
@@ -129,10 +145,7 @@ int main(int argc, char** argv)
     printf("windowNumber: %ld\n", (long)[win windowNumber]);
     fflush(stdout);
 
-    std::string cmd = std::string("screencapture -x -o -l ") + std::to_string((long)[win windowNumber]) + " " + argv[2];
-    printf("screencapture: %d\n", system(cmd.c_str()));
-    std::string full = std::string("screencapture -x ") + argv[2] + ".full.png";
-    system(full.c_str());
+    captureWindow(win, argv[2]);
     fflush(stdout);
     _exit(0);
     }
